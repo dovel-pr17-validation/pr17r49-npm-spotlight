@@ -122,8 +122,8 @@ importers:
   packages/spotlight:
     dependencies:
       '@hono/mcp':
-        specifier: ^0.2.2
-        version: 0.2.2(@modelcontextprotocol/sdk@1.32.0(zod@4.1.13))(hono-rate-limiter@0.4.2(hono@4.13.11))(hono@4.13.11)(zod@4.1.13)
+        specifier: ^0.3.5
+        version: 0.3.5(@modelcontextprotocol/sdk@1.32.0(zod@4.1.13))(hono-rate-limiter@0.4.2(hono@4.13.11))(hono@4.13.11)(zod@4.1.13)
       '@hono/node-server':
         specifier: '>=2.0.5 <3'
         version: 2.1.3(hono@4.13.11)
@@ -1327,12 +1327,12 @@ packages:
   '@fontsource/raleway@5.2.5':
     resolution: {integrity: sha512-gVFV8Yi8Y5h8sQw0U/F6TQID53DVIWPuRxqBLOBxwLbQma42JAwqTZ+pi3eDjpm20/rjS2XoVJH5hnMx1KFB+g==}
 
-  '@hono/mcp@0.2.2':
-    resolution: {integrity: sha512-h1yHXsv08OWT8bXyIOoZVXw0qU1UmSDwm014fPnFXiyeS9iMMHftn907wNXTh07IorlGqPbZArev4nBz9Q3oKQ==}
+  '@hono/mcp@0.3.5':
+    resolution: {integrity: sha512-CquYSjbl9BuprbMMjvgO2owK7kdEA9wh2CJqAjn1Zk2QAM24y2OBSv5gz5O8jHCp39ae4dgIxOSonEVR+2PpJQ==}
     peerDependencies:
-      '@modelcontextprotocol/sdk': ^1.23.0
+      '@modelcontextprotocol/sdk': ^1.29.0
       hono: '*'
-      hono-rate-limiter: ^0.4.2
+      hono-rate-limiter: ^0.5.4
       zod: ^3.25.0 || ^4.0.0
 
   '@hono/node-server@2.1.3':
@@ -6042,10 +6042,6 @@ packages:
     engines: {node: '>=0.10'}
     hasBin: true
 
-  pkce-challenge@5.0.0:
-    resolution: {integrity: sha512-ueGLflrrnvwB3xuo/uGob5pd5FN7l0MsLf0Z87o/UQmRtwjvfylfc9MurIxRAWywCYTgrvpXBcqjV4OfCYGCIQ==}
-    engines: {node: '>=16.20.0'}
-
   pkce-challenge@5.0.1:
     resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
     engines: {node: '>=16.20.0'}
@@ -8505,12 +8501,12 @@ snapshots:
 
   '@fontsource/raleway@5.2.5': {}
 
-  '@hono/mcp@0.2.2(@modelcontextprotocol/sdk@1.32.0(zod@4.1.13))(hono-rate-limiter@0.4.2(hono@4.13.11))(hono@4.13.11)(zod@4.1.13)':
+  '@hono/mcp@0.3.5(@modelcontextprotocol/sdk@1.32.0(zod@4.1.13))(hono-rate-limiter@0.4.2(hono@4.13.11))(hono@4.13.11)(zod@4.1.13)':
     dependencies:
       '@modelcontextprotocol/sdk': 1.32.0(zod@4.1.13)
       hono: 4.13.11
       hono-rate-limiter: 0.4.2(hono@4.13.11)
-      pkce-challenge: 5.0.0
+      pkce-challenge: 5.0.1
       zod: 4.1.13
 
   '@hono/node-server@2.1.3(hono@4.13.11)':
@@ -14052,8 +14048,6 @@ snapshots:
   picomatch@4.0.7: {}
 
   pidtree@0.6.0: {}
-
-  pkce-challenge@5.0.0: {}
 
   pkce-challenge@5.0.1: {}
 
