@@ -1,0 +1,42 @@
+# Craft Release Configuration
+# https://getsentry.github.io/craft/configuration/
+
+minVersion: "3.9.0"
+
+versioning:
+  policy: auto
+
+changelog:
+  filePath: packages/spotlight/CHANGELOG.md
+  policy: auto
+
+preReleaseCommand: bash scripts/bump-version.sh
+
+artifactProvider:
+  name: github
+  config:
+    artifacts:
+      Build & Test:
+        - 'npm-package'
+        - 'spotlight-binaries'
+        - 'electron-binaries'
+
+targets:
+  - name: npm
+    path: packages/spotlight
+
+  - name: github
+    tagPrefix: "@spotlightjs/spotlight@"
+    includeNames: /^(spotlight-|Spotlight|latest-).*|.*\.(yml|blockmap)$/
+
+  - name: docker
+    id: versioned
+    source: ghcr.io/getsentry/spotlight
+    target: ghcr.io/getsentry/spotlight
+
+  - name: docker
+    id: latest
+    source: ghcr.io/getsentry/spotlight
+    target:
+      image: ghcr.io/getsentry/spotlight
+      format: "{{{target}}}:latest"

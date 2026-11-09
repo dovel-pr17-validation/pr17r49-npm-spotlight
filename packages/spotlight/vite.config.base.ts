@@ -1,0 +1,58 @@
+import { resolve } from "node:path";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import dts from "vite-plugin-dts";
+import svgr from "vite-plugin-svgr";
+
+export const aliases = {
+  "@spotlight/ui": resolve(__dirname, "src/ui"),
+  "@spotlight/server": resolve(__dirname, "src/server"),
+  "@spotlight/shared": resolve(__dirname, "src/shared"),
+};
+
+export const defineProduction = {
+  "process.env.NODE_ENV": '"production"',
+  "process.env.npm_package_version": JSON.stringify(process.env.npm_package_version),
+  // Injected version constant for runtime use (especially in fossilized binaries)
+  __SPOTLIGHT_VERSION__: JSON.stringify(process.env.npm_package_version),
+  // Set to false for tree-shaking; Electron config overrides to true
+  __IS_ELECTRON__: false,
+};
+
+export const defineDevelopment = {
+  "process.env.NODE_ENV": '"development"',
+  "process.env.npm_package_version": JSON.stringify(process.env.npm_package_version),
+  // Set to false for tree-shaking; Electron config overrides to true
+  __IS_ELECTRON__: false,
+};
+
+export const reactPlugins = [
+  react(),
+  svgr({
+    include: ["**/*.svg", "**/*.svg?react"],
+    svgrOptions: {
+      titleProp: true,
+      exportType: "named",
+      namedExport: "ReactComponent",
+    },
+  }),
+  tailwindcss(),
+];
+
+export const dtsPlugin = dts({
+  insertTypesEntry: true,
+});
+
+export const sentryPluginOptions = {
+  org: process.env.MAIN_VITE_SENTRY_ORG,
+  authToken: process.env.MAIN_VITE_SENTRY_AUTH_TOKEN,
+  release: {
+    name: `spotlight@${process.env.npm_package_version}`, // Match runtime format
+    // Disable virtual module injection - release is set via Sentry.init() at runtime.
+    // This prevents circular dependency issues in Node 24.x when using preserveModules.
+    inject: false,
+  },
+  sourcemaps: {
+    filesToDeleteAfterUpload: ["**/*.js.map"],
+  },
+};

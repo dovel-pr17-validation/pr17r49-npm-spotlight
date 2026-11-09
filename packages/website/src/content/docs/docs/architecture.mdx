@@ -1,0 +1,47 @@
+---
+title: Architecture
+description: How Spotlight works under the hood
+---
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+import Architecture from "../../../../public/images/simple-event-flow.png";
+
+<img src={Architecture.src} width="80%" alt="Spotlight Architecture" />
+
+## How It Works
+
+Spotlight consists of two components bundled in `@spotlightjs/spotlight`:
+
+1. **Sidecar Server** - A local HTTP server that receives telemetry from your application and streams it to connected clients using [Server-Sent Events (SSE)](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events).
+
+2. **UI** - A React application that displays telemetry data in real-time. Available as a [Desktop App](/docs/desktop-app/) or browser-based UI at `localhost:8969`.
+
+## Data Flow
+
+```
+Your App → Sentry SDK → Sidecar (port 8969) → UI
+                              ↓
+                        [In-memory store]
+                              ↓
+                    Desktop App / Browser / MCP
+```
+
+1. Your application sends telemetry via Sentry SDK
+2. Sidecar receives and stores events in memory
+3. Connected clients (UI, MCP) receive events via SSE
+4. Events are displayed in real-time
+
+## Multiple Clients
+
+A single sidecar can serve multiple clients simultaneously:
+- **Desktop App** - Dedicated window with built-in UI
+- **Browser** - Web UI at `http://localhost:8969`
+- **CLI** - Stream events to terminal with `spotlight tail`
+- **MCP** - AI assistants query events via Model Context Protocol
+
+## Learn More
+
+<CardGrid>
+  <LinkCard title="Getting Started" href="/docs/getting-started/" description="Install and configure Spotlight" />
+  <LinkCard title="Sidecar Details" href="/docs/sidecar/" description="Configuration and SDK integration" />
+</CardGrid>

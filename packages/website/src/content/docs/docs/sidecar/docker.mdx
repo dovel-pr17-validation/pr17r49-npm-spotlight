@@ -1,0 +1,29 @@
+---
+title: Run Sidecar with Docker
+sidebar:
+  order: 50
+---
+
+## Run System-wide
+
+Run Spotlight as a system-wide service that can be shared across all your local projects:
+
+```shell
+docker run --rm \
+    --pull always \
+    --name spotlight \
+    --detach \
+    -p 8969:8969/tcp \
+    ghcr.io/getsentry/spotlight:latest
+```
+
+Once running, configure your SDKs to use `http://localhost:8969/stream`.
+
+## Update to Latest Version
+
+```shell
+docker stop spotlight
+docker rm spotlight
+docker pull ghcr.io/getsentry/spotlight:latest
+docker run --rm --name spotlight -d -p 8969:8969/tcp ghcr.io/getsentry/spotlight:latest
+```

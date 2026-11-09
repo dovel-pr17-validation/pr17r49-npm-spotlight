@@ -1,0 +1,94 @@
+---
+title: Get Started
+description: A guide how to contribute to Spotlight.
+---
+
+Pull down the repo (or your fork):
+
+```shell
+git clone https://github.com/getsentry/spotlight.git
+```
+
+Spotlight relies on a [pnpm](https://pnpm.io) monorepo. You'll need to install pnpm to get things going, which can be done with [Volta](https://volta.sh).
+
+:::note[Volta & PNPM]
+
+Make sure you [enable `pnpm` support for `Volta`](https://docs.volta.sh/advanced/pnpm):
+
+```shell
+# Add this to your profile file or startup script
+export VOLTA_FEATURE_PNPM=1
+```
+
+:::
+
+Ensure the node and pnpm are available:
+
+```shell
+volta install node pnpm
+```
+
+Install the package requirements:
+
+```shell
+pnpm install
+```
+
+And finally, run an initial build:
+
+```shell
+pnpm build
+```
+
+## Development
+
+Depending on what you're doing there's two paths to develop against Spotlight.
+
+### With existing data
+
+If you just want to test things out with some example traces and errors you can spin up the Spotlight repo into watch mode:
+
+```shell
+pnpm dev
+```
+
+Send sample fixtures to the sidecar with:
+
+```shell
+pnpm run --filter @spotlightjs/spotlight sample
+```
+
+This will send all the sample data to Spotlight. You can also pick a specific file and pass that as an argument to the script instead:
+
+```shell
+pnpm run --filter @spotlightjs/spotlight sample envelope_php_error.txt
+```
+
+### Linking against an existing project
+
+Additionally you may want to link it into an existing project. This is a little brittle, and we're not experts here, so your mileage may vary.
+
+{/* TODO: Can we just link @spotlightjs/spotlight? Probably?? */}
+
+First, when in the Spotlight root directory, you'll need to link the packages you're referencing (likely `@spotlightjs/spotlight`):
+
+```shell
+pnpm link --global -C packages/spotlight
+```
+
+You can now link these within your project. For example if you're using `pnpm`:
+
+```shell
+pnpm link --global @spotlightjs/spotlight
+```
+
+## Repository Structure
+
+The monorepo is mostly straight forward, but here's a quick summary:
+
+```
+spotlight
+└── packages
+    ├── spotlight    // @spotlightjs/spotlight - main package (UI, sidecar, CLI, Electron app)
+    └── website      // @spotlightjs/website   - documentation website
+```

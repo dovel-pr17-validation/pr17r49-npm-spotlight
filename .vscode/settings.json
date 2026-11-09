@@ -1,0 +1,66 @@
+{
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.biome": "explicit"
+  },
+  "files.trimTrailingWhitespace": false,
+  "files.trimFinalNewlines": false,
+  "files.insertFinalNewline": true,
+  "cursor.general.enableShadowWorkspace": true,
+  "[json]": {
+    "editor.tabSize": 2,
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[typescript]": {
+    "editor.tabSize": 2,
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "cSpell.words": [
+    "APPLEID",
+    "APPLEIDPASS",
+    "asar",
+    "Astro",
+    "Astro's",
+    "astrojs",
+    "backto",
+    "buildx",
+    "codesign",
+    "contextlines",
+    "decompressors",
+    "Endcaps",
+    "fontsource",
+    "getsentry",
+    "iife",
+    "imagetools",
+    "laravel",
+    "logentry",
+    "logfmt",
+    "microlink",
+    "modelcontextprotocol",
+    "nextjs",
+    "notarytool",
+    "outro",
+    "pageload",
+    "platformicons",
+    "postject",
+    "raleway",
+    "rcodesign",
+    "spotlightjs",
+    "Streamable",
+    "svgr",
+    "symfony",
+    "tailwindcss",
+    "TEAMID",
+    "treeshake",
+    "ttfb",
+    "txns",
+    "unsign",
+    "uuidv",
+    "VITE",
+    "webvitals",
+    "xcrun"
+  ]
+}

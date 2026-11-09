@@ -1,0 +1,431 @@
+name: Build & Test
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+  pull_request:
+
+concurrency:
+  group: ${{ github.ref_name || github.sha }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TURBO_TELEMETRY_MESSAGE_DISABLED: 1
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+  pull-requests: write  # Required for posting/updating PR comments
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'release/')) && 'Production' || 'Preview' }}
+    outputs:
+      playwright-version: ${{ steps.playwright-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache turbo build setup
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent | tr -d '\n\r')" >> $GITHUB_ENV
+
+      - uses: actions/cache@v4
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Setup NPM dependencies
+        run: pnpm install
+
+      - name: Setup Codesign Dependencies
+        env:
+          APPLE_CERT_DATA: ${{ secrets.CSC_LINK }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          curl -L 'https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F0.29.0/apple-codesign-0.29.0-x86_64-unknown-linux-musl.tar.gz' -o 'rcodesign.tar.gz'
+          echo 'dbe85cedd8ee4217b64e9a0e4c2aef92ab8bcaaa41f20bde99781ff02e600002 rcodesign.tar.gz' | sha256sum -c
+          tar -xzf rcodesign.tar.gz --strip-components=1
+          mv rcodesign /usr/local/bin/rcodesign
+          rm rcodesign.tar.gz
+          # Export certs
+          echo "$APPLE_CERT_DATA" | base64 --decode > /tmp/certs.p12
+          echo 'APPLE_CERT_PATH=/tmp/certs.p12' >> $GITHUB_ENV
+          echo "$APPLE_API_KEY" | base64 -d > /tmp/apple_key.json
+          # The stored private_key may be a bare base64 DER body (no PEM armor).
+          # Older notarytool tolerated this; Xcode 26+ notarytool rejects it. Normalize to a proper PEM.
+          KEY_BODY="$(jq -r .private_key /tmp/apple_key.json)"
+          if printf '%s' "$KEY_BODY" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$KEY_BODY" > /tmp/apple_key.pem
+          else
+            { echo "-----BEGIN PRIVATE KEY-----"; printf '%s' "$KEY_BODY" | tr -d ' \r\n' | fold -w 64; echo; echo "-----END PRIVATE KEY-----"; } > /tmp/apple_key.pem
+          fi
+          echo "APPLE_API_KEY_ISSUER_ID=$(cat /tmp/apple_key.json | jq .issuer_id -r | tr -d '\n\r')" >> $GITHUB_ENV
+          echo "APPLE_API_KEY_ID=$(cat /tmp/apple_key.json | jq .key_id -r | tr -d '\n\r')" >> $GITHUB_ENV
+          echo "APPLE_API_KEY_P8_PATH=/tmp/apple_key.pem" >> $GITHUB_ENV
+          echo 'APPLE_API_KEY_PATH=/tmp/apple_key.json' >> $GITHUB_ENV
+      
+      - name: Setup Sentry Environment Variables
+        env:
+          MAIN_VITE_SENTRY_ORG: ${{ vars.MAIN_VITE_SENTRY_ORG }}
+          MAIN_VITE_SENTRY_PROJECT: ${{ vars.MAIN_VITE_SENTRY_PROJECT }} # Electron App
+          MAIN_VITE_UI_SENTRY_PROJECT: ${{ vars.MAIN_VITE_UI_SENTRY_PROJECT }} # Spotlight UI
+          MAIN_VITE_SENTRY_AUTH_TOKEN: ${{ secrets.MAIN_VITE_SENTRY_AUTH_TOKEN }}
+        run: |
+          echo "MAIN_VITE_SENTRY_ORG=$MAIN_VITE_SENTRY_ORG" >> $GITHUB_ENV
+          echo "MAIN_VITE_SENTRY_PROJECT=$MAIN_VITE_SENTRY_PROJECT" >> $GITHUB_ENV
+          echo "MAIN_VITE_UI_SENTRY_PROJECT=$MAIN_VITE_UI_SENTRY_PROJECT" >> $GITHUB_ENV
+          echo "MAIN_VITE_SENTRY_AUTH_TOKEN=$MAIN_VITE_SENTRY_AUTH_TOKEN" >> $GITHUB_ENV
+
+      - name: Build packages
+        env:
+          APPLE_CERT_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.TEAMID }}
+          FOSSILIZE_PLATFORMS: linux-x64,linux-arm64,win-x64,darwin-x64,darwin-arm64
+          FOSSILIZE_SIGN: ${{ github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'release/')) && 'y' || 'n' }}
+        run: pnpm build
+      
+      - name: Checking npx
+        run: npx ./packages/spotlight --help
+
+      - name: Smoke test
+        env:
+          SPOTLIGHT_BINARY: ${{ github.workspace }}/packages/spotlight/dist-bin/spotlight-${{ runner.os }}-${{ runner.arch }}
+        run: |
+          # Lowercase the binary name because `runner.os` and `runner.arch` are uppercase :facepalm:
+          SPOTLIGHT_BINARY=$(echo "$SPOTLIGHT_BINARY" | tr '[:upper:]' '[:lower:]')
+          [ -f "$SPOTLIGHT_BINARY" ]
+          $SPOTLIGHT_BINARY &
+          SPOTLIGHT_PID=$!
+          curl -sf --retry 3 --retry-all-errors -o /dev/null 'http://localhost:8969/' && echo "Spotlight ran successfully"
+          kill -2 $SPOTLIGHT_PID
+
+      - name: Pack npm package
+        working-directory: packages/spotlight
+        run: pnpm pack
+
+      - name: Store built packages
+        uses: actions/upload-artifact@v5
+        with:
+          name: built-packages
+          if-no-files-found: error
+          include-hidden-files: true
+          path: |
+            packages/spotlight/dist/
+
+      - name: Store npm package
+        uses: actions/upload-artifact@v5
+        with:
+          name: npm-package
+          if-no-files-found: error
+          path: packages/spotlight/*.tgz
+
+      - name: Store standalone spotlight binaries
+        uses: actions/upload-artifact@v5
+        with:
+          name: spotlight-binaries
+          if-no-files-found: error
+          path: packages/spotlight/dist-bin/spotlight-*
+
+      - name: Store Electron build
+        uses: actions/upload-artifact@v5
+        with:
+          name: electron-build
+          if-no-files-found: error
+          include-hidden-files: true
+          path: packages/spotlight/dist-electron/
+
+      # This will be used for the base image name in e2e tests below
+      # which depends on the build job, hence why we do this here
+      - name: Playwright Version
+        id: playwright-version
+        working-directory: packages/spotlight
+        run: |
+          # Playwright outputs something like `Version 1.54.2` so we cut the "crap" at the beginning
+          echo "version=$(pnpm exec playwright --version | cut -c 9-)" >> $GITHUB_OUTPUT
+
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node_version: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache turbo build setup
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node_version }}
+          cache: "pnpm"
+
+      - name: Setup dependencies
+        run: pnpm install
+
+      - name: Run tests
+        run: pnpm -r test
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@cf701569b05ccdd861a76b8607a66d76f6fd4857
+        if: ${{ !cancelled() }}
+        with:
+          report_paths: "**/junit.xml"
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: getsentry/coverage-action@main
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          post-pr-comment: true
+
+  test-e2e-cli:
+    name: E2E CLI Tests
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node_version: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node_version }}
+          cache: "pnpm"
+
+      - name: Setup dependencies
+        run: pnpm install
+
+      - name: Clean dist directory before downloading artifacts
+        run: rm -rf packages/spotlight/dist/
+
+      - name: Download Spotlight build
+        uses: actions/download-artifact@v5
+        with:
+          name: built-packages
+          path: packages/spotlight/dist/
+
+      - name: Run CLI E2E tests
+        working-directory: packages/spotlight
+        run: pnpm test:e2e:cli
+
+  test-e2e-ui:
+    name: E2E UI Tests
+    needs: build
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v${{needs.build.outputs.playwright-version}}-noble
+      options: --user 1001
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Setup dependencies
+        run: pnpm install
+
+      - name: Clean dist directories before downloading artifacts
+        run: |
+          rm -rf packages/spotlight/dist/
+          rm -rf packages/spotlight/dist-electron/
+
+      - name: Download Spotlight build
+        uses: actions/download-artifact@v5
+        with:
+          name: built-packages
+          path: packages/spotlight/dist/
+
+      - name: Download Electron build
+        uses: actions/download-artifact@v5
+        with:
+          name: electron-build
+          path: packages/spotlight/dist-electron/
+
+      - name: Run UI E2E tests
+        working-directory: packages/spotlight
+        run: pnpm test:e2e:ui
+
+      - name: Test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results-ui
+          path: packages/spotlight/test-results/**
+
+  docker:
+    name: Docker Image
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      !cancelled()
+    env:
+      MULTI_ARCH_BUILD: ${{ ((github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push') && github.actor != 'dependabot[bot]') && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download spotlight binaries
+        uses: actions/download-artifact@v5
+        with:
+          name: spotlight-binaries
+          path: packages/spotlight/dist-bin/
+
+      - name: Rename x64 to amd64
+        # This is because Node ecosystem uses x64, but Docker uses amd64 :shrug:
+        run: mv packages/spotlight/dist-bin/spotlight-linux-x64 packages/spotlight/dist-bin/spotlight-linux-amd64
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup QEMU for cross-compilation
+        uses: docker/setup-qemu-action@v3
+
+      - name: Configure Docker Context
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          cache-from: type=gha,scope=prod
+          cache-to: type=gha,mode=max,scope=prod
+          platforms: ${{ env.MULTI_ARCH_BUILD == 'true' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: ${{ env.MULTI_ARCH_BUILD }}
+          load: ${{ env.MULTI_ARCH_BUILD == 'false' }}
+          tags: ghcr.io/getsentry/spotlight:${{ github.sha }}
+
+      - name: Test Docker Image
+        run: |
+          docker run --rm -d -p 8969:8969 ghcr.io/getsentry/spotlight:${{ github.sha }}
+          curl -sf --retry 3 --retry-all-errors -o /dev/null 'http://localhost:8969/' && echo "Spotlight ran successfully"
+
+  electron-mac:
+    name: Build Electron App (macOS)
+    needs: build
+    runs-on: macos-latest
+    if: github.event_name == 'push' && (github.ref_name == 'main' || startsWith(github.ref_name, 'release/'))
+    environment: Production
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+
+      - name: Setup dependencies
+        run: pnpm install
+
+      - name: Download Electron build
+        uses: actions/download-artifact@v5
+        with:
+          name: electron-build
+          path: packages/spotlight/dist-electron/
+
+      - name: Validate Electron build files
+        run: |
+          if [ ! -d "packages/spotlight/dist-electron/main" ] || [ ! -d "packages/spotlight/dist-electron/renderer" ]; then
+            echo "Error: Expected directories not found in artifact"
+            ls -la packages/spotlight/dist-electron/
+            exit 1
+          fi
+          echo "Electron build files validated successfully"
+
+      - name: Setup Apple API Key for Notarization
+        env:
+          APPLE_API_KEY_BUNDLE: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          echo "$APPLE_API_KEY_BUNDLE" | base64 -d > /tmp/apple_key.json
+          # The stored private_key may be a bare base64 DER body (no PEM armor).
+          # Older notarytool tolerated this; Xcode 26+ notarytool rejects it. Normalize to a proper PEM.
+          KEY_BODY="$(jq -r .private_key /tmp/apple_key.json)"
+          if printf '%s' "$KEY_BODY" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$KEY_BODY" > /tmp/apple_key.pem
+          else
+            { echo "-----BEGIN PRIVATE KEY-----"; printf '%s' "$KEY_BODY" | tr -d ' \r\n' | fold -w 64; echo; echo "-----END PRIVATE KEY-----"; } > /tmp/apple_key.pem
+          fi
+          echo "APPLE_API_ISSUER=$(cat /tmp/apple_key.json | jq .issuer_id -r | tr -d '\n\r')" >> $GITHUB_ENV
+          echo "APPLE_API_KEY_ID=$(cat /tmp/apple_key.json | jq .key_id -r | tr -d '\n\r')" >> $GITHUB_ENV
+          echo "APPLE_API_KEY=/tmp/apple_key.pem" >> $GITHUB_ENV
+
+      - name: Build and Sign Electron App
+        env:
+          MAIN_VITE_SENTRY_ORG: ${{ vars.MAIN_VITE_SENTRY_ORG }}
+          MAIN_VITE_SENTRY_PROJECT: ${{ vars.MAIN_VITE_SENTRY_PROJECT }}
+          MAIN_VITE_SENTRY_AUTH_TOKEN: ${{ secrets.MAIN_VITE_SENTRY_AUTH_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: packages/spotlight
+        run: pnpm build:mac
+
+      - name: Store Electron binaries
+        uses: actions/upload-artifact@v5
+        with:
+          name: electron-binaries
+          if-no-files-found: error
+          path: |
+            packages/spotlight/dist-electron/*.dmg
+            packages/spotlight/dist-electron/*.zip
+            packages/spotlight/dist-electron/*.blockmap
+            packages/spotlight/dist-electron/*.yml
+
